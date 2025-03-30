@@ -48,17 +48,14 @@ const WatermarkRemover: React.FC = () => {
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
-      const a = data[i + 3];
+      const alpha = data[i + 3];
 
-      // Calculate pixel intensity
-      const intensity = (r + g + b) / 3;
-
-      // If pixel is close to white (potential watermark)
-      if (intensity > threshold) {
-        // Replace with surrounding pixels or white
+      // Apply threshold to remove watermark
+      if (r > threshold && g > threshold && b > threshold) {
         data[i] = 255;
         data[i + 1] = 255;
         data[i + 2] = 255;
+        data[i + 3] = alpha; // Preserve original alpha
       }
     }
 
