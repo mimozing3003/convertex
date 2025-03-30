@@ -25,6 +25,7 @@ import {
   Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
+import { PDFDocument, PDFName } from 'pdf-lib';
 
 interface FileStatus {
   name: string;
@@ -36,6 +37,8 @@ interface FileStatus {
   originalSize: number;
   compressedSize: number;
   error?: string;
+  compressedFile?: Blob;
+  file?: File;
 }
 
 const PdfCompressor = () => {
@@ -56,6 +59,7 @@ const PdfCompressor = () => {
       targetSize: targetSize * 1024, // Convert KB to bytes
       compressionLevel,
       compressedSize: 0,
+      file,
     }));
     setFiles(prev => [...prev, ...newFiles]);
   }, [targetSize, compressionLevel]);
@@ -69,6 +73,59 @@ const PdfCompressor = () => {
 
   const handleRemoveFile = (index: number) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const compressPdf = async (file: File): Promise<Blob> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdfDoc = await PDFDocument.load(arrayBuffer);
+    
+    // Get the number of pages
+    const pageCount = pdfDoc.getPageCount();
+
+    // Apply compression to each page
+    for (let i = 0; i < pageCount; i++) {
+      const page = pdfDoc.getPage(i);
+      
+      // Get page dimensions
+      const { width, height } = page.getSize();
+      
+      // Get all images on the page
+      const resources = page.node.Resources();
+      if (resources) {
+        const xObject = resources.lookup(PDFName.of('XObject'));
+        if (xObject) {
+          const dict = xObject as any;
+          const imageRefs = Object.keys(dict);
+          
+          for (const ref of imageRefs) {
+            const imageObj = await pdfDoc.context.lookup(dict[ref]);
+            if (imageObj && typeof imageObj === 'object' && 'getSize' in imageObj) {
+              const maxDimension = Math.max(width, height);
+              const scale = maxDimension / 2000; // Limit maximum dimension to 2000px
+              
+              if (scale < 1) {
+                // Apply compression to the image
+                const imageData = (imageObj as any).getImageData?.();
+                if (imageData) {
+                  const compressedImage = await pdfDoc.embedJpg(imageData);
+                  dict.set(PDFName.of(ref), compressedImage);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Save the compressed PDF with optimized settings
+    const compressedPdfBytes = await pdfDoc.save({
+      useObjectStreams: true,
+      addDefaultPage: false,
+      objectsPerTick: 50,
+      updateFieldAppearances: true,
+    });
+
+    return new Blob([compressedPdfBytes], { type: 'application/pdf' });
   };
 
   const handleCompress = async () => {
@@ -86,60 +143,74 @@ const PdfCompressor = () => {
       const file = files[i];
       const targetSizeBytes = targetSize * 1024; // Convert KB to bytes
 
-      // Check if target size is achievable
-      if (targetSizeBytes < file.originalSize * 0.1) {
+      try {
+        if (!file.file) {
+          throw new Error('File not found');
+        }
+
+        // Check if target size is achievable
+        if (targetSizeBytes < file.originalSize * 0.1) {
+          throw new Error('Target size too small. Minimum size is 10% of original.');
+        }
+
+        // Update progress to 20%
+        setFiles(prevFiles =>
+          prevFiles.map((f, index) =>
+            index === i ? { ...f, progress: 20 } : f
+          )
+        );
+
+        // Compress the PDF
+        const compressedBlob = await compressPdf(file.file);
+
+        // Update progress to 80%
+        setFiles(prevFiles =>
+          prevFiles.map((f, index) =>
+            index === i ? { ...f, progress: 80 } : f
+          )
+        );
+
+        // Update file status with compressed result
+        setFiles(prevFiles =>
+          prevFiles.map((f, index) =>
+            index === i
+              ? {
+                  ...f,
+                  progress: 100,
+                  status: 'completed' as const,
+                  compressedSize: compressedBlob.size,
+                  compressedFile: compressedBlob,
+                }
+              : f
+          )
+        );
+      } catch (err) {
         setFiles(prevFiles =>
           prevFiles.map((f, index) =>
             index === i
               ? {
                   ...f,
                   status: 'error' as const,
-                  error: 'Target size too small. Minimum size is 10% of original.',
-                }
-              : f
-          )
-        );
-        continue;
-      }
-
-      // Calculate compression ratio based on target size
-      const compressionRatio = targetSizeBytes / file.originalSize;
-      
-      // Simulate progress
-      for (let progress = 0; progress <= 100; progress += 10) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        setFiles(prevFiles =>
-          prevFiles.map((f, index) =>
-            index === i
-              ? {
-                  ...f,
-                  progress,
-                  compressedSize: Math.round(f.originalSize * (1 - (progress / 100) * (1 - compressionRatio))),
+                  error: err instanceof Error ? err.message : 'Compression failed',
                 }
               : f
           )
         );
       }
-
-      // Set final compressed size
-      setFiles(prevFiles =>
-        prevFiles.map((f, index) =>
-          index === i
-            ? {
-                ...f,
-                progress: 100,
-                status: 'completed' as const,
-                compressedSize: Math.round(f.originalSize * compressionRatio),
-              }
-            : f
-        )
-      );
     }
   };
 
   const handleDownload = (file: FileStatus) => {
-    // In a real implementation, this would download the compressed file
-    alert(`Download functionality will be implemented in the next version. File: ${file.name}`);
+    if (file.compressedFile) {
+      const url = URL.createObjectURL(file.compressedFile);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `compressed_${file.name}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
   };
 
   const formatFileSize = (bytes: number) => {

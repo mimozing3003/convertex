@@ -12,10 +12,20 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    open: true,
+    strictPort: true,
+    host: true,
+    open: true
   },
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+      },
+    },
   },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom', '@mui/material', '@mui/icons-material', 'framer-motion']
+  }
 }) 

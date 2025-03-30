@@ -1,169 +1,196 @@
-import { useState, useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
-import {
-  Box,
-  Button,
-  Typography,
-  IconButton,
-  LinearProgress,
-  Paper,
-} from '@mui/material';
-import {
-  Delete as DeleteIcon,
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  AutoFixHigh as AutoFixIcon,
-} from '@mui/icons-material';
-import { motion } from 'framer-motion';
-import { useTranslation } from 'react-i18next';
+import React, { useState, useRef } from 'react';
+import { Box, Button, Typography, Paper, CircularProgress, Alert, Slider } from '@mui/material';
+import { CloudUpload, Download } from '@mui/icons-material';
 
-interface FileStatus {
-  name: string;
-  size: number;
-  type: 'pdf' | 'image';
-  status: 'pending' | 'processing' | 'completed' | 'error';
-  progress: number;
-}
+const WatermarkRemover: React.FC = () => {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string>('');
+  const [processing, setProcessing] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [threshold, setThreshold] = useState<number>(50);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-const WatermarkRemover = () => {
-  const { t } = useTranslation();
-  const [file, setFile] = useState<FileStatus | null>(null);
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      setSelectedFile(file);
+      setError(null);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setError('Please select a valid image file (JPG, PNG)');
+    }
+  };
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      const file = acceptedFiles[0];
-      const fileType = file.type === 'application/pdf' ? 'pdf' : 'image';
-      setFile({
-        name: file.name,
-        size: file.size,
-        type: fileType,
-        status: 'pending',
-        progress: 0,
+  const removeWatermark = (image: HTMLImageElement) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Set canvas dimensions to match image
+    canvas.width = image.width;
+    canvas.height = image.height;
+
+    // Draw original image
+    ctx.drawImage(image, 0, 0);
+
+    // Get image data
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    // Apply threshold-based watermark removal
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+
+      // Calculate pixel intensity
+      const intensity = (r + g + b) / 3;
+
+      // If pixel is close to white (potential watermark)
+      if (intensity > threshold) {
+        // Replace with surrounding pixels or white
+        data[i] = 255;
+        data[i + 1] = 255;
+        data[i + 2] = 255;
+      }
+    }
+
+    // Put modified image data back to canvas
+    ctx.putImageData(imageData, 0, 0);
+
+    return canvas.toDataURL('image/png');
+  };
+
+  const handleRemoveWatermark = async () => {
+    if (!selectedFile) return;
+
+    setProcessing(true);
+    setError(null);
+
+    try {
+      const img = new Image();
+      img.src = preview;
+
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
       });
+
+      const processedImageData = removeWatermark(img);
+      if (!processedImageData) {
+        throw new Error('Failed to process image');
+      }
+
+      // Convert base64 to blob
+      const response = await fetch(processedImageData);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `removed_watermark_${selectedFile.name}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error removing watermark:', error);
+      setError('Failed to remove watermark. Please try again.');
+    } finally {
+      setProcessing(false);
     }
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'application/pdf': ['.pdf'],
-      'image/*': ['.jpg', '.jpeg', '.png', '.webp']
-    },
-    maxFiles: 1,
-  });
-
-  const handleRemoveFile = () => {
-    setFile(null);
-  };
-
-  const handleProcess = async () => {
-    if (!file) return;
-
-    setFile(prev => prev ? { ...prev, status: 'processing', progress: 0 } : null);
-
-    // Simulate processing time
-    for (let i = 0; i <= 100; i += 10) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-      setFile(prev => prev ? { ...prev, progress: i } : null);
-    }
-
-    setFile(prev => prev ? { ...prev, status: 'completed', progress: 100 } : null);
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-    >
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h4" gutterBottom>
-          {t('converter.watermarkRemover.title')}
-        </Typography>
-
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            {t('converter.watermarkRemover.description')}
+    <Paper elevation={3} sx={{ p: 3, maxWidth: 800, mx: 'auto', mt: 4 }}>
+      <Typography variant="h5" gutterBottom>
+        Watermark Remover
+      </Typography>
+      
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+      
+      <Box sx={{ mb: 3 }}>
+        <input
+          accept="image/*"
+          style={{ display: 'none' }}
+          id="watermark-remover-upload"
+          type="file"
+          onChange={handleFileSelect}
+        />
+        <label htmlFor="watermark-remover-upload">
+          <Button
+            variant="contained"
+            component="span"
+            startIcon={<CloudUpload />}
+            fullWidth
+            disabled={processing}
+          >
+            Select Image
+          </Button>
+        </label>
+        {selectedFile && (
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            Selected: {selectedFile.name}
+            <br />
+            Size: {(selectedFile.size / 1024).toFixed(2)} KB
           </Typography>
-          <Typography variant="body2" color="text.secondary" paragraph>
-            {t('converter.watermarkRemover.supportedFormats')}
-          </Typography>
-        </Paper>
-
-        <Paper
-          {...getRootProps()}
-          sx={{
-            p: 3,
-            mb: 3,
-            textAlign: 'center',
-            backgroundColor: isDragActive ? 'action.hover' : 'background.paper',
-            cursor: 'pointer',
-            border: '2px dashed',
-            borderColor: isDragActive ? 'primary.main' : 'divider',
-            transition: 'all 0.3s ease',
-            '&:hover': {
-              borderColor: 'primary.main',
-              backgroundColor: 'action.hover',
-            },
-          }}
-        >
-          <input {...getInputProps()} />
-          <Typography variant="h6" gutterBottom>
-            {t('converter.watermarkRemover.dropzone')}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {t('converter.watermarkRemover.dropzoneDescription')}
-          </Typography>
-        </Paper>
-
-        {file && (
-          <Paper sx={{ p: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-              <Box>
-                <Typography variant="h6">
-                  {file.name}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {formatFileSize(file.size)} • {file.type.toUpperCase()}
-                </Typography>
-              </Box>
-              <Box>
-                {file.status === 'processing' && (
-                  <Box sx={{ width: 200, mr: 2, display: 'inline-block' }}>
-                    <LinearProgress variant="determinate" value={file.progress} />
-                  </Box>
-                )}
-                {file.status === 'completed' && (
-                  <CheckCircleIcon color="success" sx={{ mr: 2 }} />
-                )}
-                {file.status === 'error' && (
-                  <ErrorIcon color="error" sx={{ mr: 2 }} />
-                )}
-                <IconButton onClick={handleRemoveFile} sx={{ mr: 2 }}>
-                  <DeleteIcon />
-                </IconButton>
-                <Button
-                  variant="contained"
-                  onClick={handleProcess}
-                  disabled={file.status === 'processing'}
-                  startIcon={<AutoFixIcon />}
-                >
-                  {t('converter.watermarkRemover.process')}
-                </Button>
-              </Box>
-            </Box>
-          </Paper>
         )}
       </Box>
-    </motion.div>
+
+      {preview && (
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Preview:
+          </Typography>
+          <img
+            src={preview}
+            alt="Preview"
+            style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain' }}
+          />
+        </Box>
+      )}
+
+      <Box sx={{ mb: 3 }}>
+        <Typography gutterBottom>
+          Threshold: {threshold}%
+        </Typography>
+        <Slider
+          value={threshold}
+          onChange={(_, value) => setThreshold(value as number)}
+          min={0}
+          max={100}
+          marks
+          valueLabelDisplay="auto"
+          disabled={processing}
+        />
+        <Typography variant="body2" color="text.secondary">
+          Adjust the threshold to control watermark removal intensity. Higher values will remove more light-colored areas.
+        </Typography>
+      </Box>
+
+      <Button
+        variant="contained"
+        color="primary"
+        onClick={handleRemoveWatermark}
+        disabled={!selectedFile || processing}
+        startIcon={processing ? <CircularProgress size={20} /> : <Download />}
+        fullWidth
+      >
+        {processing ? 'Removing Watermark...' : 'Remove Watermark & Download'}
+      </Button>
+
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+    </Paper>
   );
 };
 

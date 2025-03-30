@@ -10,10 +10,12 @@ import PdfToWord from './pages/converters/PdfToWord';
 import WordToPdf from './pages/converters/WordToPdf';
 import PdfEditor from './pages/converters/PdfEditor';
 import Settings from './pages/Settings';
-import PhotoCompressor from './pages/converters/PhotoCompressor';
 import ImageToPdf from './pages/converters/ImageToPdf';
 import BackgroundRemover from './pages/converters/BackgroundRemover';
 import WatermarkRemover from './pages/converters/WatermarkRemover';
+import PDFCompressor from './components/PDFCompressor';
+import ImageCompressor from './components/ImageCompressor';
+import { compressImage } from './utils/imageCompression';
 import './index.css';
 
 const App = () => {
@@ -83,7 +85,8 @@ const App = () => {
                 <Route path="/converter/word-to-pdf" element={<WordToPdf />} />
                 <Route path="/converter/pdf-editor" element={<PdfEditor />} />
                 <Route path="/settings" element={<Settings darkMode={darkMode} setDarkMode={setDarkMode} />} />
-                <Route path="/photo-compressor" element={<PhotoCompressor />} />
+                <Route path="/converter/pdf-compressor" element={<PDFCompressor />} />
+                <Route path="/converter/image-compressor" element={<ImageCompressor onCompress={compressImage} />} />
                 <Route path="/converter/image-to-pdf" element={<ImageToPdf />} />
                 <Route path="/converter/background-remover" element={<BackgroundRemover />} />
                 <Route path="/converter/watermark-remover" element={<WatermarkRemover />} />
