@@ -3,10 +3,9 @@ import { Box } from '@mui/material';
 import { motion } from 'framer-motion';
 import { styled } from '@mui/material/styles';
 
-const LogoContainer = styled(Box)(({ theme }) => ({
+const LogoContainer = styled(Box)({
   display: 'flex',
   alignItems: 'center',
-  gap: '8px',
   padding: '8px 16px',
   borderRadius: '12px',
   background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.1) 0%, rgba(245, 0, 87, 0.1) 100%)',
@@ -16,15 +15,15 @@ const LogoContainer = styled(Box)(({ theme }) => ({
     transform: 'translateY(-2px)',
     boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
   },
-}));
+});
 
-const LogoText = styled(motion.div)(({ theme }) => ({
+const LogoText = styled(motion.div)({
   display: 'flex',
   alignItems: 'center',
   gap: '4px',
-}));
+});
 
-const LogoLetter = styled(motion.span)(({ theme }) => ({
+const LogoLetter = styled(motion.span)({
   display: 'inline-block',
   fontSize: '28px',
   fontWeight: 800,
@@ -49,7 +48,7 @@ const LogoLetter = styled(motion.span)(({ theme }) => ({
     transform: 'scaleX(1)',
     transformOrigin: 'left',
   },
-}));
+});
 
 const Logo = () => {
   const letters = "CONVERTEX".split("");
